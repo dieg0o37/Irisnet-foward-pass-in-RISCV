@@ -13,7 +13,7 @@ OUTPUT_BUFFER: .space 2          # Buffer para armazenar o resultado final (0, 1
 # -- _start --
 # a0 = código de saída do programa
 _start:
-    la a0 INPUT_BUFFER
+    la a0, INPUT_BUFFER
     li a1, 17214 # 8192 + 20 + 8192 + 400 + 400 + 4 + 4 + 2 = 17214
     jal zero_memory
 
