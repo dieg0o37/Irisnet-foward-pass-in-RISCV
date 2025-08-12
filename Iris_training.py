@@ -1,8 +1,4 @@
 import torch
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix
-import matplotlib.pyplot as plt
 from typing import List, Tuple
 
 
@@ -35,21 +31,6 @@ def fit(model, data, targets, epochs = 400, lr = 0.002):
         loss.backward()
         optimizer.step()
     return losses
-
-
-
-# Testing the model
-def test(model, data, targets):
-    print("Testing...")
-    model.eval()
-    with torch.no_grad():
-        outputs = model(data)
-        preds = outputs.argmax(dim=1)
-        acc = accuracy_score(targets.cpu(), preds.cpu())
-        cm = confusion_matrix(targets.cpu(), preds.cpu())
-    model.train()
-    return acc, cm
-
 # Extracting weights
 def extract_weights(model):
     print("extracting weights...")
@@ -58,28 +39,3 @@ def extract_weights(model):
         weights[f"l{i + 1}"] = layer.weight.data.cpu().numpy().tolist()
     return weights
 
-if __name__ == "__main__":
-    iris = load_iris()
-    data_train, data_test, answers_train, answers_test = train_test_split(iris.data, iris.target, test_size=0.2)
-
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    data_tr_tensor = torch.tensor(data_train, dtype=torch.float32).to(device)
-    answers_tr_tensor = torch.tensor(answers_train, dtype=torch.long).to(device)
-    data_te_tensor = torch.tensor(data_test, dtype=torch.float32).to(device)
-    answers_te_tensor = torch.tensor(answers_test, dtype=torch.long).to(device)
-
-    model = irismodel([(4, 10), (10, 20), (20, 3)]).to(device)
-    loss_arr = fit(model, data_tr_tensor, answers_tr_tensor, epochs=400, lr=0.002)
-
-
-    acc, cm = test(model, data_te_tensor, answers_te_tensor)
-    print(f"Test Accuracy: {acc}")
-    print(f"Confusion Matrix:\n{cm}")
-
-
-
-# plt.plot(loss_arr)
-# plt.title("Training curve")
-# plt.xlabel("Epochs")
-# plt.ylabel("Loss")
-# plt.show()
