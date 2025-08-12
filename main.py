@@ -4,52 +4,6 @@ from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 import Iris_training as ir
 import numpy as np
-import subprocess
-import os
-def risc_v_test_model(test_input_string):
-    """
-    Runs the irisnet.s file with the provided string as input
-    using the riscemu emulator.
-    """
-    print(f"\n--- Testing with RISC-V Emulator ---")
-    # Command to execute the emulator with your assembly file.
-    # This assumes 'riscemu' is installed and accessible in your environment.
-    command = ["riscemu", "irisnet.asm"]
-
-    # Check if the assembly file exists
-    if not os.path.exists("irisnet.asm"):
-        print("Error: 'irisnet.asm' not found.")
-        return
-
-    try:
-        # Run the emulator as a subprocess
-        # - 'input' passes the string to the program's standard input.
-        # - 'capture_output=True' captures what the program prints.
-        # - 'text=True' ensures input and output are treated as strings.
-        # - 'check=True' will raise an error if the emulator fails.
-        completed_process = subprocess.run(
-            command,
-            input=test_input_string,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-
-        riscv_output = completed_process.stdout.strip()
-        print(f"RISC-V program output: {riscv_output}")
-        print(f"Test successful!")
-        return riscv_output
-
-    except FileNotFoundError:
-        print("Error: 'riscemu' command not found.")
-        print("Please ensure you have installed it (e.g., 'pip install riscemu').")
-    except subprocess.CalledProcessError as e:
-        # If the emulator returns an error, print its error output
-        print(f"An error occurred while running the emulator.")
-        print(f"Return code: {e.returncode}")
-        print(f"Stderr:\\n{e.stderr}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
 
 def get_nn_input():
     while True:
@@ -58,8 +12,8 @@ def get_nn_input():
             if len(nn_structure_input) < 2:
                 print("Structure must have at least input and output layers.")
                 continue
-            if nn_structure_input[-1] != 3:
-                print("Output layer must have 3 neurons.")
+            if nn_structure_input[-1] != 3 or nn_structure_input[0] != 4:
+                print("Output layer must have 3 neurons and input layer must have 4 neurons.")
                 continue
             number_epochs = int(input("Enter number of epochs: "))
             if number_epochs <= 0:
@@ -135,7 +89,10 @@ def test(model, data, targets):
         acc = accuracy_score(targets.cpu(), preds.cpu())
         cm = confusion_matrix(targets.cpu(), preds.cpu())
     model.train()
-    return acc, cm, preds.cpu()
+    print("Testing complete!")
+    print(f"Accuracy: {acc * 100:.2f}%")
+    print(f"Confusion Matrix:\n{cm}")
+    return preds.cpu()
 
 if __name__ == "__main__":
     nn_structure_input, number_epochs, learning_rate = get_nn_input()
@@ -173,21 +130,22 @@ if __name__ == "__main__":
     RV32I_test_cases += str(nn_structure_input[-1]) + "\r\n"
     RV32I_test_cases += weight_string + "\r\n"
 
-    accuracy, conf_matrix, preds = test(model, data_te_tensor, answers_te_tensor)
+    preds = test(model, data_te_tensor, answers_te_tensor)
+
+    # Manual testing with the RISC-V emulator
+    with open("riscv_test_cases.txt", "w") as file:
+        file.write(f"Load the irisnet.s file into https://riscv-programming.org/ale/#\n")
+        file.write(f"Select RUN and copy and paste the test cases below into the terminal:\n")
+        pass
     for i, activation_vector in enumerate(data_te_tensor):
         activation_vec = ""
         activation_vec += get_activation_vector_string(get_quantized_activation_vector(activation_vector))
         activation_vec += "\0"
         with open("riscv_test_cases.txt", "a") as f:
             f.write(f"--- Test Case {i} ---\n")
-            riscv_output = risc_v_test_model(RV32I_test_cases + activation_vec)
             f.write(f"Expected output: {preds[i]}, Correct answer: {answers_te_tensor[i].item()}\n")
-            f.write("Activation vector: " + activation_vec + "\n")
-            f.write(f"RISC-V output: {riscv_output}\n")
-
-    # Results of the Pytorch testing
-    print(f"Accuracy: {accuracy * 100:.2f}%")
-    print(f"Confusion Matrix:\n{conf_matrix}")
+            f.write(f"RISC-V quantized input:\n" + RV32I_test_cases + activation_vec + "\n")
+    
 
 
 
