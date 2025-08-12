@@ -1,12 +1,12 @@
 .bss
-INPUT_BUFFER: .skip 8192        # Buffer para armazenar a string de entrada inteira
-TAM_CAMADAS: .skip 20           # Suporta até 5 camadas (5 * 4 bytes/int)
-PESOS_MATRIZ: .skip 8192        # Buffer para armazenar os pesos (td em int)
-VETOR_ATIVACAO_0: .skip 400     # Buffer para armazenar o vetor de ativação c - 1
-VETOR_ATIVACAO_1: .skip 400     # Buffer para armazenar o vetor de ativação c
-NUMERO_CAMADAS: .skip 4
-OUTPUT: .skip 4                 # Buffer para armazenar o index da planta escolhida (0, 1 ou 2)
-OUTPUT_BUFFER: .skip 2          # Buffer para armazenar o resultado final (0, 1 ou 2) + '\n'
+INPUT_BUFFER: .space 8192        # Buffer para armazenar a string de entrada inteira
+TAM_CAMADAS: .space 20           # Suporta até 5 camadas (5 * 4 bytes/int)
+PESOS_MATRIZ: .space 8192        # Buffer para armazenar os pesos (td em int)
+VETOR_ATIVACAO_0: .space 400     # Buffer para armazenar o vetor de ativação c - 1
+VETOR_ATIVACAO_1: .space 400     # Buffer para armazenar o vetor de ativação c
+NUMERO_CAMADAS: .space 4
+OUTPUT: .space 4                 # Buffer para armazenar o index da planta escolhida (0, 1 ou 2)
+OUTPUT_BUFFER: .space 2          # Buffer para armazenar o resultado final (0, 1 ou 2) + '\n'
 
 .text
 .globl _start
@@ -87,7 +87,7 @@ pular_caracteres:
     li t4, 48                       # Código ASCII para '0'
     blt t3, t4, prox_char   
     li t4, 57                       # Código ASCII para '9'
-    bgt t3, t4, prox_char           # Se não for entre '0' e '9', pula
+    blt t4, t3, prox_char           # Se não for entre '0' e '9', pula
     j parse_loop
 
 prox_char:
@@ -104,7 +104,7 @@ parse_loop:
     li t4, 48               # Código ASCII para '0'
     blt t3, t4, parse_end   # Se for menor que '0', termina o parsing
     li t4, 57               # Código ASCII para '9'
-    bgt t3, t4, parse_end   # Se for maior que '9', termina o parsing
+    blt t4, t3, parse_end   # Se for maior que '9', termina o parsing
 
     addi t3, t3, -48        # Converte de ASCII para inteiro
 
@@ -195,7 +195,7 @@ parse_pesos_camada_loop:
     mul s5, t1, t2    # Calcula o número de pesos para esta camada
 
 parse_camada_loop:
-    beqz s5, prox_camada      # Se não há mais pesos, vai para a próxima camada
+    beq s5, zero, prox_camada      # Se não há mais pesos, vai para a próxima camada
 
     jal ler_prox_int          # Lê o próximo inteiro
 
@@ -206,7 +206,7 @@ parse_camada_loop:
 
 prox_camada:
     addi s0, s0, -1                 # decrementa o contador de matrizes
-    beqz s0, prox_linha_pesos       # Se já leu todas as matrizes, termina
+    beq s0, zero, prox_linha_pesos       # Se já leu todas as matrizes, termina
 
     addi a0, a0, 9                  # Avança o ponteiro para pular a parte final da camada "]],"li":[["
     addi s3, s3, 4                  # Avança para o próximo par de tamanhos de camada
@@ -298,7 +298,7 @@ irisnet:
     la s4, VETOR_ATIVACAO_1 # O primeiro vetor de saída será o VETOR_ATIVACAO_1
 
 irisnet_loop:
-    beqz s0, irisnet_end    # Se o contador de matrizes chegou a zero, termina.
+    beq s0, zero, irisnet_end    # Se o contador de matrizes chegou a zero, termina.
 
     # --- Prepara os argumentos para a função de multiplicação ---
     lw a0, 0(s1)          # a0 = N_in (tamanho da camada de entrada)
