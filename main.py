@@ -1,35 +1,10 @@
+from sklearn.metrics import confusion_matrix, accuracy_score
 import torch
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 import Iris_training as ir
-import riscemu
+import numpy as np
 
-# INPUT FOR PYTHON CODE: 
-# 1 Line: NN structure (ex: 4,8,15,3)
-# 2 Line: number of epochs
-# 3 Line: learning rate
-
-# TRAINING:
-# Train Iris model based on INPUT
-
-# EXTRACTING RESULT:
-# extract the weight matrizes (no implementation for biases :( )
-# transform into ASCII (string) following the format:
-# {"l1":[[...]],"l2":[[...]],"l3":[[...]]}
-
-# QUANTIZATION: (RV32I only accepts integer values of 32 bits)
-#   solution: transform all float to 8 bit integers [-128, 127] (affine quantization)
-
-# TESTING:
-# Get the activation vector for all test cases
-# Test the model utilizing Risc-V code
-
-# RISC-V code expected input (ALL ASCII):
-# Line 1: 4,8,15,3
-# Line 2: {"l1": [[-72, 6, 127, 117], [89, 115, -128, -79], [-83, -56, 127, -54], [-48, -128, 104, 98], [78, 57, -30, -128], [-41, -59, 47, 127], [-128, -29, 36, -45], [-128, 0, -61, 18]], "l2": [[17, -59, 39, 54, -67, 127, -37, -39], [0, -110, 122, -87, 44, -128, 79, -124], [57, -8, -82, 61, 127, -119, -16, -36], [-58, -106, 91, -61, 19, -54, -35, -128], [-36, -88, -128, -83, -5, -57, -88, 116], [-99, 0, 118, -101, -128, -62, 30, 119], [91, -40, -123, -5, 127, 122, -48, 77], [82, 2, 127, -101, -108, -14, 4, -32], [-6, 53, 65, -64, -76, 127, -84, 100], [-57, -101, -97, -56, 72, 5, 127, 60], [-30, 127, 56, -93, 14, -84, 33, 42], [116, 1, 29, 127, 11, -16, 113, 80], [-128, 120, 69, -6, -101, 56, -41, -76], [120, -41, -79, -127, -102, 43, -89, 30], [-29, -53, 127, -57, 45, -8, -105, 44]], "l3": [[7, 8, -107, 0, -45, -24, -127, -17, -19, 12, 82, -98, 63, -39, 14], [-79, 1, 48, 58, -51, -42, 78, -62, -71, 47, 127, 11, -110, 80, 15], [50, -51, 48, -30, -65, 84, 124, 64, 57, -10, -128, 49, 50, 29, -49]]}
-# Line 3: 59,30,51,18 (activation vector)
-
-# 1 - Receive INPUT
 def get_nn_input():
     while True:
         try:
@@ -53,7 +28,6 @@ def get_nn_input():
             print(f"Invalid input: {e}. Please try again.")
 
 nn_structure_input, number_epochs, learning_rate = get_nn_input()
-RV32I_input = ""
 
 if torch.backends.mps.is_available():
     device = "mps"
@@ -78,11 +52,10 @@ model = ir.irismodel(nn_structure).to(device)
 loss_arr = ir.fit(model, data_tr_tensor, answers_tr_tensor, epochs=number_epochs, lr=learning_rate)
 
 weights = ir.extract_weights(model)
-
 def get_quantized_weights(weights):
     quantized = {}
     for layer, params in weights.items():
-        quantized[layer] = [[int(round(p * 127)) for p in row] for row in params]
+        quantized[layer] = [[max(-128, min(127, int(round(p * 127)))) for p in row] for row in params]
     return quantized
 
 def convert_weights_to_string(quantized_weights):
@@ -95,10 +68,46 @@ def convert_weights_to_string(quantized_weights):
     weight_string = weight_string[:-1] + "}"
     return weight_string
 
-
 weight_string = convert_weights_to_string(get_quantized_weights(weights))
-print(weight_string)
-RV32I_input += weight_string + "\n"
+# print(weight_string)
+RV32I_test_cases = f" --- NN_structure --- \n"
+for i in range(len(nn_structure_input) - 1):
+    RV32I_test_cases += str(nn_structure_input[i]) + ","
+RV32I_test_cases += str(nn_structure_input[-1]) + f"\n"
+RV32I_test_cases += f"--- Weight Matrix --- \n"
+RV32I_test_cases += weight_string + f"\n"
 
-def model_testing():
-    pass
+
+def get_quantized_activation_vector(activation_vector):
+    return [max(-128, min(127, int(round(p * 127)))) for p in activation_vector.cpu().numpy()]
+
+def get_activation_vector_string(activation_vector):
+    return ",".join(map(str, activation_vector))
+
+
+for i, activation_vector in enumerate(data_te_tensor):
+    RV32I_test_cases += f"--- Activation Vector {i} --- \n"
+    RV32I_test_cases += get_activation_vector_string(get_quantized_activation_vector(activation_vector)) + f"\n"
+
+# Testing the model
+def test(model, data, targets):
+    print(f"\n--- Testing with Pytorch ---")
+    model.eval()
+    with torch.no_grad():
+        outputs = model(data)
+        preds = outputs.argmax(dim=1)
+        acc = accuracy_score(targets.cpu(), preds.cpu())
+        cm = confusion_matrix(targets.cpu(), preds.cpu())
+    model.train()
+    return acc, cm, preds.cpu()
+
+accuracy, conf_matrix, preds = test(model, data_te_tensor, answers_te_tensor)
+print(f"Accuracy: {accuracy * 100:.2f}%")
+print(f"Confusion Matrix:\n{conf_matrix}")
+
+def create_riscv_test_cases(test_input_string):
+    with open("riscv_test_cases.txt", "w") as f:
+        f.write(test_input_string)
+
+create_riscv_test_cases(RV32I_test_cases)
+   
