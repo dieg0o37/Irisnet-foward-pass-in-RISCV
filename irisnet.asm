@@ -13,17 +13,35 @@ OUTPUT_BUFFER: .space 2          # Buffer para armazenar o resultado final (0, 1
 # -- _start --
 # a0 = código de saída do programa
 _start:
+    la a0 INPUT_BUFFER
+    li a1, 17214 # 8192 + 20 + 8192 + 400 + 400 + 4 + 4 + 2 = 17214
+    jal zero_memory
+
     jal main
     li a7, 93
     ecall
+
+zero_memory:
+    beq a1, zero, end_zero
+    sb zero, 0(a0)
+    addi a0, a0, 1
+    addi a1, a1, -1
+    j zero_memory
+end_zero:
+    ret
 
 # -- inicialização --
 ler_input:
     li a0, 0
     li a7, 63
     la a1, INPUT_BUFFER
-    li a2, 8192
+    li a2, 819
     ecall
+
+
+    la t0, INPUT_BUFFER
+    add t0, t0, a0
+    sb zero, 0(t0)
     ret
 
 # -- main --
@@ -208,7 +226,7 @@ prox_camada:
     addi s0, s0, -1                 # decrementa o contador de matrizes
     beq s0, zero, prox_linha_pesos       # Se já leu todas as matrizes, termina
 
-    addi a0, a0, 9                  # Avança o ponteiro para pular a parte final da camada "]],"li":[["
+    addi a0, a0, 7                  # Avança o ponteiro para pular a parte final da camada "]],"li":[["
     addi s3, s3, 4                  # Avança para o próximo par de tamanhos de camada
     j parse_pesos_camada_loop       # Continua lendo pesos para a próxima camada
 
