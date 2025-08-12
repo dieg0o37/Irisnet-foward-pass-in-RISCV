@@ -6,7 +6,7 @@ import Iris_training as ir
 import numpy as np
 import subprocess
 import os
-def risc_v_test_model(test_input_string, pred, correct):
+def risc_v_test_model(test_input_string):
     """
     Runs the irisnet.s file with the provided string as input
     using the riscemu emulator.
@@ -14,11 +14,11 @@ def risc_v_test_model(test_input_string, pred, correct):
     print(f"\n--- Testing with RISC-V Emulator ---")
     # Command to execute the emulator with your assembly file.
     # This assumes 'riscemu' is installed and accessible in your environment.
-    command = ["riscemu", "irisnet.s"]
+    command = ["riscemu", "irisnet.asm"]
 
     # Check if the assembly file exists
-    if not os.path.exists("irisnet.s"):
-        print("Error: 'irisnet.s' not found.")
+    if not os.path.exists("irisnet.asm"):
+        print("Error: 'irisnet.asm' not found.")
         return
 
     try:
@@ -37,8 +37,8 @@ def risc_v_test_model(test_input_string, pred, correct):
 
         riscv_output = completed_process.stdout.strip()
         print(f"RISC-V program output: {riscv_output}")
-        print(f"Expected output: {pred}, Correct answer: {correct}")
         print(f"Test successful!")
+        return riscv_output
 
     except FileNotFoundError:
         print("Error: 'riscemu' command not found.")
@@ -75,8 +75,8 @@ def get_nn_input():
 
 def quantize_value(x, alfa, beta):
     """
-    Aplica a quantização afim para converter um valor float para um inteiro de 8 bits.
-    Mapeia o intervalo [min_val, max_val] para o intervalo de inteiros [-128, 127].
+    Applies affine quantization to convert a float value to an 8-bit integer.
+    Maps the range [min_val, max_val] to the integer range [-128, 127].
     """
     if beta == alfa:
         return 0
@@ -137,59 +137,59 @@ def test(model, data, targets):
     model.train()
     return acc, cm, preds.cpu()
 
-def create_riscv_test_cases(test_input_string):
-    with open("riscv_test_cases.txt", "w") as f:
-        print(test_input_string, file=f)
+if __name__ == "__main__":
+    nn_structure_input, number_epochs, learning_rate = get_nn_input()
+
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
+
+    # Load Iris dataset
+    iris = load_iris()
+    data_train, data_test, answers_train, answers_test = train_test_split(iris.data, iris.target, test_size=0.2)
+    data_tr_tensor = torch.tensor(data_train, dtype=torch.float32).to(device)
+    answers_tr_tensor = torch.tensor(answers_train, dtype=torch.long).to(device)
+    data_te_tensor = torch.tensor(data_test, dtype=torch.float32).to(device)
+    answers_te_tensor = torch.tensor(answers_test, dtype=torch.long).to(device)
+
+    # Define the neural network structure
+    nn_structure = []
+    for x in range(len(nn_structure_input) - 1):
+        nn_structure.append((nn_structure_input[x], nn_structure_input[x + 1]))
+
+    # Create the model based on the defined structure
+    model = ir.irismodel(nn_structure).to(device)
+    loss_arr = ir.fit(model, data_tr_tensor, answers_tr_tensor, epochs=number_epochs, lr=learning_rate)
+    weights = ir.extract_weights(model)
+
+    # Create the input for the RV32I test cases
+    weight_string = convert_weights_to_string(get_quantized_weights(weights))
+    RV32I_test_cases = ""
+    for i in range(len(nn_structure_input) - 1):
+        RV32I_test_cases += str(nn_structure_input[i]) + ","
+    RV32I_test_cases += str(nn_structure_input[-1]) + "\r\n"
+    RV32I_test_cases += weight_string + "\r\n"
+
+    accuracy, conf_matrix, preds = test(model, data_te_tensor, answers_te_tensor)
+    for i, activation_vector in enumerate(data_te_tensor):
+        activation_vec = ""
+        activation_vec += get_activation_vector_string(get_quantized_activation_vector(activation_vector))
+        activation_vec += "\0"
+        with open("riscv_test_cases.txt", "a") as f:
+            f.write(f"--- Test Case {i} ---\n")
+            riscv_output = risc_v_test_model(RV32I_test_cases + activation_vec)
+            f.write(f"Expected output: {preds[i]}, Correct answer: {answers_te_tensor[i].item()}\n")
+            f.write("Activation vector: " + activation_vec + "\n")
+            f.write(f"RISC-V output: {riscv_output}\n")
+
+    # Results of the Pytorch testing
+    print(f"Accuracy: {accuracy * 100:.2f}%")
+    print(f"Confusion Matrix:\n{conf_matrix}")
 
 
-nn_structure_input, number_epochs, learning_rate = get_nn_input()
-
-if torch.backends.mps.is_available():
-    device = "mps"
-elif torch.cuda.is_available():
-    device = "cuda"
-else:
-    device = "cpu"
-
-iris = load_iris()
-data_train, data_test, answers_train, answers_test = train_test_split(iris.data, iris.target, test_size=0.2)
-data_tr_tensor = torch.tensor(data_train, dtype=torch.float32).to(device)
-answers_tr_tensor = torch.tensor(answers_train, dtype=torch.long).to(device)
-data_te_tensor = torch.tensor(data_test, dtype=torch.float32).to(device)
-answers_te_tensor = torch.tensor(answers_test, dtype=torch.long).to(device)
-
-nn_structure = []
-
-for x in range(len(nn_structure_input) - 1):
-    nn_structure.append((nn_structure_input[x], nn_structure_input[x + 1]))
-
-model = ir.irismodel(nn_structure).to(device)
-loss_arr = ir.fit(model, data_tr_tensor, answers_tr_tensor, epochs=number_epochs, lr=learning_rate)
-
-weights = ir.extract_weights(model)
-
-weight_string = convert_weights_to_string(get_quantized_weights(weights))
-RV32I_test_cases = ""
-for i in range(len(nn_structure_input) - 1):
-     RV32I_test_cases += str(nn_structure_input[i]) + ","
-RV32I_test_cases += str(nn_structure_input[-1]) + "\n"
-RV32I_test_cases += weight_string + "\n"
-
-accuracy, conf_matrix, preds = test(model, data_te_tensor, answers_te_tensor)
-
-for i, activation_vector in enumerate(data_te_tensor):
-    activation_vec = ""
-    activation_vec += get_activation_vector_string(get_quantized_activation_vector(activation_vector))
-    activation_vec += "\0"
-    with open("riscv_test_cases.txt", "a") as f:
-        print(RV32I_test_cases + activation_vec, file=f)
-    risc_v_test_model(RV32I_test_cases + activation_vec, preds[i], answers_te_tensor[i].item())
 
 
-print(f"Accuracy: {accuracy * 100:.2f}%")
-print(f"Confusion Matrix:\n{conf_matrix}")
-
-
-
-
-   
+    
