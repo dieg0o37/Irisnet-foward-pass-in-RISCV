@@ -3,7 +3,6 @@ import torch
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 import Iris_training as ir
-import numpy as np
 
 def get_nn_input():
     while True:
